@@ -1,9 +1,8 @@
-# Build and push Docker image on push to main/staging, or after CI passes there.
+# Build and push Docker image only after CI passes on main or staging (test first, then build).
+# Note: workflow_run uses the workflow file from the default branch; keep this file on main.
 name: Build and Push Image
 
 on:
-  push:
-    branches: ["main", "staging"]
   workflow_run:
     workflows: ["CI"]
     types:
@@ -14,21 +13,21 @@ permissions:
   contents: read
   packages: write
 
-# Cancel in-progress build when a newer run completes on the same branch.
+# Cancel in-progress build when a newer CI run completes on the same branch.
 concurrency:
-  group: docker-${{ github.event.workflow_run.head_branch || github.ref_name }}
+  group: docker-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: true
 
 jobs:
   build:
-    # On push: always build. On workflow_run: only when CI succeeded.
-    if: github.event_name == 'push' || github.event.workflow_run.conclusion == 'success'
+    # Only build when CI succeeded; skip if CI failed or was cancelled.
+    if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
-      # Push: use commit from event. workflow_run: use the commit CI tested.
+      # Check out the exact commit that CI tested.
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       # GHCR/OCI requires lowercase repository names (e.g. Thindwa -> thindwa).
       - name: Set image repository (lowercase for OCI)
@@ -51,5 +50,5 @@ jobs:
           push: true
           # Branch tag (e.g. :main, :staging) and commit SHA tag.
           tags: |
-            ghcr.io/${{ steps.image.outputs.repo }}:${{ github.event.workflow_run.head_branch || github.ref_name }}
-            ghcr.io/${{ steps.image.outputs.repo }}:${{ github.event.workflow_run.head_sha || github.sha }}
+            ghcr.io/${{ steps.image.outputs.repo }}:${{ github.event.workflow_run.head_branch }}
+            ghcr.io/${{ steps.image.outputs.repo }}:${{ github.event.workflow_run.head_sha }}
