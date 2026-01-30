@@ -15,4 +15,10 @@ jobs:
           php-version: "8.3"
 
       - run: composer install --no-interaction --prefer-dist
+
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
       - run: php artisan test
