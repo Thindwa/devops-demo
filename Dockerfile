@@ -20,8 +20,28 @@ RUN npm run build
 
 
 FROM composer:2 AS vendor
+FROM php:8.3-cli-bookworm AS vendor
 WORKDIR /app
+
+# Install PHP extensions required by Laravel/composer dependencies.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    git \
+    unzip \
+    libcurl4-openssl-dev \
+    libonig-dev \
+    libxml2-dev \
+    libzip-dev \
+  && docker-php-ext-install \
+    curl \
+    mbstring \
+    xml \
+    zip \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 COPY composer.json composer.lock ./
+
 RUN composer install \
   --no-dev \
   --no-interaction \
@@ -39,11 +59,17 @@ RUN apt-get update \
     supervisor \
     git \
     unzip \
+    libcurl4-openssl-dev \
+    libonig-dev \
+    libxml2-dev \
     libzip-dev \
   && docker-php-ext-install \
     opcache \
     pdo \
     pdo_mysql \
+    curl \
+    mbstring \
+    xml \
     zip \
   && rm -rf /var/lib/apt/lists/*
 
