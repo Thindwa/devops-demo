@@ -1,19 +1,37 @@
+# Build and push Docker image only after CI passes on main or staging.
 name: Build and Push Image
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      completed
     branches: ["main", "staging"]
-  pull_request:
 
 permissions:
   contents: read
   packages: write
 
+# Cancel in-progress build when a newer CI run completes on the same branch.
+concurrency:
+  group: docker-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
 jobs:
   build:
+    # Only build when CI succeeded; skip on failure/cancelled.
+    if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
+      # Check out the exact commit that was tested by CI.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      # GHCR/OCI requires lowercase repository names (e.g. Thindwa -> thindwa).
+      - name: Set image repository (lowercase for OCI)
+        id: image
+        run: echo "repo=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
 
       - uses: docker/setup-buildx-action@v3
 
@@ -24,12 +42,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push (branch builds)
-        if: github.event_name == 'push'
+      - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
+          # Branch tag (e.g. :main, :staging) and commit SHA tag.
           tags: |
-            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
-            ghcr.io/${{ github.repository }}:${{ github.sha }}
+            ghcr.io/${{ steps.image.outputs.repo }}:${{ github.event.workflow_run.head_branch }}
+            ghcr.io/${{ steps.image.outputs.repo }}:${{ github.event.workflow_run.head_sha }}
