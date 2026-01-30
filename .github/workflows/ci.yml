@@ -1,5 +1,4 @@
-# Run tests on every push and pull request (all branches).
-# On push to main/staging, run test then build image (same workflow, no default-branch dependency).
+# CI: run tests on every push + PR (all branches).
 name: CI
 
 on:
@@ -8,7 +7,6 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 # Cancel in-progress runs when a new push happens on the same branch.
 concurrency:
@@ -35,52 +33,3 @@ jobs:
           php artisan key:generate
 
       - run: php artisan test
-
-  # Runs only on push to main/staging, and only after test passes (test first, then build).
-  build:
-    needs: test
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set image repository (lowercase for OCI)
-        id: image
-        run: echo "repo=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
-
-      - uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          # Build for amd64 and arm64 so Coolify on ARM (e.g. Graviton, Oracle ARM) can pull.
-          platforms: linux/amd64,linux/arm64
-          tags: |
-            ghcr.io/${{ steps.image.outputs.repo }}:${{ github.ref_name }}
-            ghcr.io/${{ steps.image.outputs.repo }}:${{ github.sha }}
-
-  # Deploy to Coolify: staging or production based on branch (only after build succeeds).
-  deploy:
-    needs: build
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging')
-    runs-on: ubuntu-latest
-    steps:
-      - name: Deploy to Coolify (staging)
-        if: github.ref_name == 'staging'
-        run: |
-          curl -sS -X GET "${{ secrets.COOLIFY_WEBHOOK_STAGING }}" \
-            -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}"
-      - name: Deploy to Coolify (production)
-        if: github.ref_name == 'main'
-        run: |
-          curl -sS -X GET "${{ secrets.COOLIFY_WEBHOOK_PRODUCTION }}" \
-            -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}"
