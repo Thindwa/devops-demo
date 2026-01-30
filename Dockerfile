@@ -8,10 +8,13 @@
 FROM node:20-bookworm-slim AS frontend
 WORKDIR /app
 ENV NODE_ENV=production
+ARG TARGETARCH
+ENV npm_config_platform=linux
+ENV npm_config_arch=$TARGETARCH
 
 # Install frontend deps with caching.
 COPY package*.json ./
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+RUN if [ -f package-lock.json ]; then npm ci --omit=optional; else npm install --omit=optional; fi
 
 # Build assets
 COPY vite.config.js ./
