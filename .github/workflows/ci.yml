@@ -44,6 +44,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Build frontend (Vite)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - run: npm run build
+
       - name: Set image repository (lowercase for OCI)
         id: image
         run: echo "repo=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
