@@ -7,6 +7,7 @@
 
 FROM node:20-bookworm-slim AS frontend
 WORKDIR /app
+ENV NODE_ENV=production
 
 # Install frontend deps with caching.
 COPY package*.json ./
@@ -19,7 +20,6 @@ COPY public/ public/
 RUN npm run build
 
 
-FROM composer:2 AS vendor
 FROM php:8.3-cli-bookworm AS vendor
 WORKDIR /app
 
@@ -29,11 +29,15 @@ RUN apt-get update \
     git \
     unzip \
     libcurl4-openssl-dev \
+    libicu-dev \
     libonig-dev \
     libxml2-dev \
     libzip-dev \
   && docker-php-ext-install \
+    bcmath \
     curl \
+    dom \
+    intl \
     mbstring \
     xml \
     zip \
@@ -55,19 +59,24 @@ WORKDIR /app
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
+    curl \
     nginx \
     supervisor \
     git \
     unzip \
     libcurl4-openssl-dev \
+    libicu-dev \
     libonig-dev \
     libxml2-dev \
     libzip-dev \
   && docker-php-ext-install \
+    bcmath \
     opcache \
     pdo \
     pdo_mysql \
     curl \
+    dom \
+    intl \
     mbstring \
     xml \
     zip \
@@ -88,5 +97,9 @@ COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 RUN chown -R www-data:www-data /app/storage /app/bootstrap/cache
 
 EXPOSE 8080
+
+# Optional but helpful for container orchestration
+HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
+  CMD curl -fsS http://127.0.0.1:8080/ >/dev/null || exit 1
 
 CMD ["/usr/bin/supervisord","-n","-c","/etc/supervisor/supervisord.conf"]
