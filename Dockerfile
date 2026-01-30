@@ -20,7 +20,14 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then arch="x64"; else arch="$TARGETARCH"; fi
 COPY vite.config.js ./
 COPY resources/ resources/
 COPY public/ public/
-RUN npm run build
+# Print useful diagnostics if Vite build fails (so CI logs show the real error).
+RUN npm run build || ( \
+  echo "---- node/npm versions ----" && node -v && npm -v && \
+  echo "---- npm logs (if any) ----" && ls -la /root/.npm/_logs || true && \
+  (ls -1 /root/.npm/_logs 2>/dev/null | tail -n 3 | xargs -I{} sh -c 'echo \"----- {} -----\"; cat \"/root/.npm/_logs/{}\"' || true) && \
+  echo "---- build context hints ----" && ls -la resources/js resources/css public || true && \
+  exit 1 \
+)
 
 
 FROM php:8.3-cli-bookworm AS vendor
