@@ -1,8 +1,14 @@
+# Run tests on every push and pull request (all branches).
 name: CI
 
 on:
   push:
   pull_request:
+
+# Cancel in-progress runs when a new push happens on the same branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -10,12 +16,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # PHP 8.3 for compatibility with Laravel 12.
       - uses: shivammathur/setup-php@v2
         with:
           php-version: "8.3"
 
       - run: composer install --no-interaction --prefer-dist
 
+      # .env and APP_KEY required for feature tests (no .env in CI).
       - name: Prepare environment
         run: |
           cp .env.example .env
