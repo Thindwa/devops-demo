@@ -10,11 +10,11 @@ WORKDIR /app
 ENV NODE_ENV=production
 ARG TARGETARCH
 ENV npm_config_platform=linux
-ENV npm_config_arch=$TARGETARCH
 
 # Install frontend deps with caching.
 COPY package*.json ./
-RUN if [ -f package-lock.json ]; then npm ci --omit=optional; else npm install --omit=optional; fi
+RUN if [ "$TARGETARCH" = "amd64" ]; then arch="x64"; else arch="$TARGETARCH"; fi; \
+  if [ -f package-lock.json ]; then npm_config_arch="$arch" npm ci --omit=optional; else npm_config_arch="$arch" npm install --omit=optional; fi
 
 # Build assets
 COPY vite.config.js ./
