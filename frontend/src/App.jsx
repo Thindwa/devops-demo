@@ -20,6 +20,36 @@ function NavButton({ active, label, badge, onClick }) {
   )
 }
 
+function ConfirmModal({ open, title, message, confirmText = 'Confirm', danger = false, onConfirm, onClose }) {
+  useEffect(() => {
+    if (!open) return
+    function onKeyDown(e) {
+      if (e.key === 'Escape') onClose?.()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [open, onClose])
+
+  if (!open) return null
+
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true" onMouseDown={() => onClose?.()}>
+      <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="modal-title">{title}</div>
+        <div className="modal-body">{message}</div>
+        <div className="modal-actions">
+          <button className="btn ghost" type="button" onClick={() => onClose?.()}>
+            Cancel
+          </button>
+          <button className={`btn ${danger ? 'danger' : 'primary'}`} type="button" onClick={() => onConfirm?.()}>
+            {confirmText}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function App() {
   const [auth, setAuth] = useState({ user: null, loading: true })
   const [email, setEmail] = useState('user@example.com')
@@ -31,15 +61,25 @@ function App() {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [active, setActive] = useState('tickets')
+  const [editingId, setEditingId] = useState(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editDescription, setEditDescription] = useState('')
+
+  const [confirm, setConfirm] = useState({ open: false, title: '', message: '', danger: true, confirmText: 'Delete', onConfirm: null })
+
+  function closeConfirm() {
+    setConfirm({ open: false, title: '', message: '', danger: true, confirmText: 'Delete', onConfirm: null })
+  }
 
   const role = auth.user?.role || ''
   const canManageTickets = role === 'agent' || role === 'admin'
   const isAdmin = role === 'admin'
 
-  async function refresh() {
+  async function refresh(userRole = auth.user?.role) {
     const t = await api.listTickets()
     setTickets(t)
-    if (isAdmin) setUsers(await api.listUsers())
+    if (userRole === 'admin') setUsers(await api.listUsers())
+    else setUsers([])
   }
 
   useEffect(() => {
@@ -47,7 +87,7 @@ function App() {
       try {
         const me = await api.me()
         setAuth({ user: me, loading: false })
-        await refresh()
+        await refresh(me.role)
       } catch {
         setAuth({ user: null, loading: false })
       }
@@ -80,7 +120,7 @@ function App() {
       const res = await api.login(email, password)
       setToken(res.token)
       setAuth({ user: res.user, loading: false })
-      await refresh()
+      await refresh(res.user?.role)
     } catch (err) {
       setError(err.message || 'Login failed')
     }
@@ -122,6 +162,127 @@ function App() {
     }
   }
 
+  function beginEdit(t) {
+    setEditingId(t.id)
+    setEditTitle(t.title || '')
+    setEditDescription(t.description || '')
+  }
+
+  function cancelEdit() {
+    setEditingId(null)
+    setEditTitle('')
+    setEditDescription('')
+  }
+
+  async function saveEdit(id) {
+    setError('')
+    try {
+      await api.updateTicket(id, editTitle, editDescription)
+      cancelEdit()
+      await refresh()
+    } catch (err) {
+      setError(err.message || 'Failed to update ticket')
+    }
+  }
+
+  async function deleteTicket(id) {
+    setConfirm({
+      open: true,
+      title: 'Delete ticket?',
+      message: 'This ticket will be permanently deleted. This cannot be undone.',
+      danger: true,
+      confirmText: 'Delete',
+      onConfirm: async () => {
+        setError('')
+        try {
+          await api.deleteTicket(id)
+          if (editingId === id) cancelEdit()
+          await refresh()
+        } catch (err) {
+          setError(err.message || 'Failed to delete ticket')
+        } finally {
+          closeConfirm()
+        }
+      },
+    })
+  }
+
+  const [newUserName, setNewUserName] = useState('')
+  const [newUserEmail, setNewUserEmail] = useState('')
+  const [newUserPassword, setNewUserPassword] = useState('')
+  const [newUserRole, setNewUserRole] = useState('user')
+  const [editingUserId, setEditingUserId] = useState(null)
+  const [editUserName, setEditUserName] = useState('')
+  const [editUserEmail, setEditUserEmail] = useState('')
+  const [editUserRole, setEditUserRole] = useState('user')
+  const [resetUserPassword, setResetUserPassword] = useState('')
+
+  function beginEditUser(u) {
+    setEditingUserId(u.id)
+    setEditUserName(u.name || '')
+    setEditUserEmail(u.email || '')
+    setEditUserRole(u.role || 'user')
+    setResetUserPassword('')
+  }
+
+  function cancelEditUser() {
+    setEditingUserId(null)
+    setEditUserName('')
+    setEditUserEmail('')
+    setEditUserRole('user')
+    setResetUserPassword('')
+  }
+
+  async function createUser(e) {
+    e.preventDefault()
+    setError('')
+    try {
+      await api.createUser(newUserName, newUserEmail, newUserPassword, newUserRole)
+      setNewUserName('')
+      setNewUserEmail('')
+      setNewUserPassword('')
+      setNewUserRole('user')
+      await refresh()
+    } catch (err) {
+      setError(err.message || 'Failed to create user')
+    }
+  }
+
+  async function saveUser(id) {
+    setError('')
+    try {
+      const patch = { name: editUserName, email: editUserEmail, role: editUserRole }
+      if (resetUserPassword.trim()) patch.password = resetUserPassword
+      await api.updateUser(id, patch)
+      cancelEditUser()
+      await refresh()
+    } catch (err) {
+      setError(err.message || 'Failed to update user')
+    }
+  }
+
+  async function deleteUser(id, emailForMsg) {
+    setConfirm({
+      open: true,
+      title: 'Delete user?',
+      message: `Delete ${emailForMsg}? This cannot be undone.`,
+      danger: true,
+      confirmText: 'Delete',
+      onConfirm: async () => {
+        setError('')
+        try {
+          await api.deleteUser(id)
+          if (editingUserId === id) cancelEditUser()
+          await refresh()
+        } catch (err) {
+          setError(err.message || 'Failed to delete user')
+        } finally {
+          closeConfirm()
+        }
+      },
+    })
+  }
+
   const ticketCounts = useMemo(() => {
     const out = { open: 0, in_progress: 0, closed: 0 }
     for (const t of tickets) {
@@ -140,7 +301,8 @@ function App() {
     return 'Help Desk'
   }, [active, auth.user])
 
-  function TicketList() {
+  // Render helpers (not React components) to avoid remounting UI on each render.
+  function renderTicketList() {
     return (
       <Card title={`Tickets (${tickets.length})`}>
         <div className="grid">
@@ -165,7 +327,50 @@ function App() {
                   )}
                 </div>
               </div>
-              <div className="ticket-body">{t.description}</div>
+              {editingId === t.id ? (
+                <div className="grid" style={{ marginTop: 10 }}>
+                  <div className="field">
+                    <div className="muted" style={{ fontSize: 12 }}>
+                      Title
+                    </div>
+                    <input className="input" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
+                  </div>
+                  <div className="field">
+                    <div className="muted" style={{ fontSize: 12 }}>
+                      Description
+                    </div>
+                    <textarea
+                      className="textarea"
+                      rows={4}
+                      value={editDescription}
+                      onChange={(e) => setEditDescription(e.target.value)}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    <button className="btn primary" type="button" onClick={() => saveEdit(t.id)}>
+                      Save
+                    </button>
+                    <button className="btn" type="button" onClick={cancelEdit}>
+                      Cancel
+                    </button>
+                    <button className="btn danger" type="button" onClick={() => deleteTicket(t.id)}>
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="ticket-body">{t.description}</div>
+                  <div style={{ display: 'flex', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
+                    <button className="btn" type="button" onClick={() => beginEdit(t)}>
+                      Edit
+                    </button>
+                    <button className="btn danger" type="button" onClick={() => deleteTicket(t.id)}>
+                      Delete
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           ))}
           {tickets.length === 0 ? <div className="muted">No tickets yet.</div> : null}
@@ -174,7 +379,7 @@ function App() {
     )
   }
 
-  function CreateTicket() {
+  function renderCreateTicket() {
     return (
       <Card title="Create ticket">
         <form onSubmit={onCreateTicket} className="grid">
@@ -204,36 +409,141 @@ function App() {
     )
   }
 
-  function UsersTable() {
+  function renderUsersTable() {
     if (!isAdmin) return null
     return (
-      <Card title={`Users (${users.length})`}>
-        <table className="table">
-          <thead>
-            <tr>
-              <th align="left">ID</th>
-              <th align="left">Name</th>
-              <th align="left">Email</th>
-              <th align="left">Role</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => (
-              <tr key={u.id}>
-                <td>{u.id}</td>
-                <td>{u.name}</td>
-                <td>{u.email}</td>
-                <td>{u.role}</td>
+      <>
+        <Card title="Create user">
+          <form onSubmit={createUser} className="grid">
+            <div className="grid cols-3">
+              <div className="field">
+                <div className="muted" style={{ fontSize: 12 }}>
+                  Name
+                </div>
+                <input className="input" value={newUserName} onChange={(e) => setNewUserName(e.target.value)} />
+              </div>
+              <div className="field">
+                <div className="muted" style={{ fontSize: 12 }}>
+                  Role
+                </div>
+                <select className="select" value={newUserRole} onChange={(e) => setNewUserRole(e.target.value)}>
+                  <option value="user">user</option>
+                  <option value="agent">agent</option>
+                  <option value="admin">admin</option>
+                </select>
+              </div>
+              <div className="field">
+                <div className="muted" style={{ fontSize: 12 }}>
+                  Password
+                </div>
+                <input
+                  className="input"
+                  type="password"
+                  value={newUserPassword}
+                  onChange={(e) => setNewUserPassword(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="field">
+              <div className="muted" style={{ fontSize: 12 }}>
+                Email
+              </div>
+              <input className="input" value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} />
+            </div>
+            <button className="btn primary" type="submit">
+              Create user
+            </button>
+          </form>
+        </Card>
+
+        <Card title={`Users (${users.length})`}>
+          <table className="table">
+            <thead>
+              <tr>
+                <th align="left">ID</th>
+                <th align="left">Name</th>
+                <th align="left">Email</th>
+                <th align="left">Role</th>
+                <th align="left">Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
+            </thead>
+            <tbody>
+              {users.map((u) => (
+                <tr key={u.id}>
+                  <td>{u.id}</td>
+                  <td>
+                    {editingUserId === u.id ? (
+                      <input className="input" value={editUserName} onChange={(e) => setEditUserName(e.target.value)} />
+                    ) : (
+                      u.name
+                    )}
+                  </td>
+                  <td>
+                    {editingUserId === u.id ? (
+                      <input className="input" value={editUserEmail} onChange={(e) => setEditUserEmail(e.target.value)} />
+                    ) : (
+                      u.email
+                    )}
+                  </td>
+                  <td>
+                    {editingUserId === u.id ? (
+                      <select className="select" value={editUserRole} onChange={(e) => setEditUserRole(e.target.value)}>
+                        <option value="user">user</option>
+                        <option value="agent">agent</option>
+                        <option value="admin">admin</option>
+                      </select>
+                    ) : (
+                      <span className="pill">{u.role}</span>
+                    )}
+                  </td>
+                  <td>
+                    {editingUserId === u.id ? (
+                      <div className="grid" style={{ gap: 8 }}>
+                        <div className="field">
+                          <div className="muted" style={{ fontSize: 12 }}>
+                            Reset password (optional)
+                          </div>
+                          <input
+                            className="input"
+                            type="password"
+                            value={resetUserPassword}
+                            onChange={(e) => setResetUserPassword(e.target.value)}
+                          />
+                        </div>
+                        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                          <button className="btn primary" type="button" onClick={() => saveUser(u.id)}>
+                            Save
+                          </button>
+                          <button className="btn" type="button" onClick={cancelEditUser}>
+                            Cancel
+                          </button>
+                          <button className="btn danger" type="button" onClick={() => deleteUser(u.id, u.email)}>
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                        <button className="btn" type="button" onClick={() => beginEditUser(u)}>
+                          Edit
+                        </button>
+                        <button className="btn danger" type="button" onClick={() => deleteUser(u.id, u.email)}>
+                          Delete
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      </>
     )
   }
 
-  function Dashboard() {
-    if (!isAdmin) return <TicketList />
+  function renderDashboard() {
+    if (!isAdmin) return renderTicketList()
     return (
       <>
         <Card title="Overview">
@@ -252,8 +562,8 @@ function App() {
             </div>
           </div>
         </Card>
-        <TicketList />
-        <UsersTable />
+        {renderTicketList()}
+        {renderUsersTable()}
       </>
     )
   }
@@ -360,10 +670,10 @@ function App() {
             <div className="content">
               {error ? <div className="alert">{error}</div> : null}
 
-              {active === 'dashboard' ? <Dashboard /> : null}
-              {active === 'tickets' ? <TicketList /> : null}
-              {active === 'create' ? <CreateTicket /> : null}
-              {active === 'users' ? <UsersTable /> : null}
+              {active === 'dashboard' ? renderDashboard() : null}
+              {active === 'tickets' ? renderTicketList() : null}
+              {active === 'create' ? renderCreateTicket() : null}
+              {active === 'users' ? renderUsersTable() : null}
               {active === 'session' ? (
                 <Card title="Session">
                   <div className="grid">
@@ -383,6 +693,16 @@ function App() {
           </main>
         </div>
       ) : null}
+
+      <ConfirmModal
+        open={confirm.open}
+        title={confirm.title}
+        message={confirm.message}
+        confirmText={confirm.confirmText}
+        danger={confirm.danger}
+        onConfirm={confirm.onConfirm}
+        onClose={closeConfirm}
+      />
     </div>
   )
 }
