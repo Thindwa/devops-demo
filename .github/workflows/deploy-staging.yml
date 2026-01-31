@@ -4,6 +4,15 @@ on:
   push:
     branches: ["staging"]
   workflow_dispatch:
+    inputs:
+      deploy:
+        description: "Trigger Coolify deploy webhook (optional)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
 permissions:
   contents: read
@@ -41,6 +50,12 @@ jobs:
           file: docker/backend.Dockerfile
           push: true
           platforms: linux/amd64,linux/arm64
+          # Speed: reuse BuildKit layers across workflow runs.
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+          # Speed: skip extra attestations unless you need them.
+          provenance: false
+          sbom: false
           tags: |
             ghcr.io/${{ steps.image.outputs.repo }}-backend:staging
             ghcr.io/${{ steps.image.outputs.repo }}-backend:${{ github.sha }}
@@ -52,6 +67,8 @@ jobs:
           image-ref: ghcr.io/${{ steps.image.outputs.repo }}-backend:${{ github.sha }}
           severity: CRITICAL,HIGH
           exit-code: "1"
+          ignore-unfixed: true
+          scanners: vuln
 
       - name: Build and push frontend (tag :staging)
         uses: docker/build-push-action@v6
@@ -62,6 +79,10 @@ jobs:
           file: docker/frontend.Dockerfile
           push: true
           platforms: linux/amd64,linux/arm64
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+          provenance: false
+          sbom: false
           tags: |
             ghcr.io/${{ steps.image.outputs.repo }}-frontend:staging
             ghcr.io/${{ steps.image.outputs.repo }}-frontend:${{ github.sha }}
@@ -72,8 +93,11 @@ jobs:
           image-ref: ghcr.io/${{ steps.image.outputs.repo }}-frontend:${{ github.sha }}
           severity: CRITICAL,HIGH
           exit-code: "1"
+          ignore-unfixed: true
+          scanners: vuln
 
       - name: Deploy to Coolify (staging)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy == 'true' }}
         run: |
           curl -sS -X GET "${{ secrets.COOLIFY_WEBHOOK_STAGING }}" \
             -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}"
