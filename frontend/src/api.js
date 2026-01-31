@@ -8,7 +8,8 @@ export function setToken(token) {
 }
 
 function getApiBaseUrl() {
-  const v = (import.meta.env?.VITE_API_BASE_URL || '').trim()
+  const runtime = window.__ENV__?.VITE_API_BASE_URL
+  const v = (runtime ?? import.meta.env?.VITE_API_BASE_URL ?? '').trim()
   return v.endsWith('/') ? v.slice(0, -1) : v
 }
 
