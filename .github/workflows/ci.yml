@@ -46,6 +46,9 @@ jobs:
           image-ref: helpdesk-backend:test
           severity: CRITICAL,HIGH
           exit-code: "1"
+          # CI should fail on fixable HIGH/CRITICAL issues.
+          # OS CVEs with no upstream fix yet shouldn't block merges.
+          ignore-unfixed: true
 
   frontend:
     runs-on: ubuntu-latest
@@ -79,3 +82,4 @@ jobs:
           image-ref: helpdesk-frontend:test
           severity: CRITICAL,HIGH
           exit-code: "1"
+          ignore-unfixed: true
