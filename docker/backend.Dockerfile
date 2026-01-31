@@ -37,9 +37,20 @@ FROM php:8.3-apache-bookworm
 
 WORKDIR /var/www/html
 
-# Pull latest security patches available at build time.
+# Pull latest security patches available at build time and install runtime PHP extensions.
 RUN apt-get update \
   && apt-get upgrade -y \
+  && apt-get install -y --no-install-recommends \
+    libcurl4-openssl-dev \
+    libonig-dev \
+    libxml2-dev \
+    libzip-dev \
+  && docker-php-ext-install \
+    curl \
+    mbstring \
+    pdo_mysql \
+    xml \
+    zip \
   && rm -rf /var/lib/apt/lists/*
 
 # Use Laravel-style public document root (works for real Laravel later too).
