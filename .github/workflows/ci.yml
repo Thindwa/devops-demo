@@ -1,35 +1,85 @@
-# CI: run tests on every push + PR (all branches).
 name: CI
 
 on:
-  push:
   pull_request:
 
 permissions:
   contents: read
 
-# Cancel in-progress runs when a new push happens on the same branch.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  test:
+  backend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      # PHP 8.3 for compatibility with Laravel 12.
-      - uses: shivammathur/setup-php@v2
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
         with:
           php-version: "8.3"
 
-      - run: composer install --no-interaction --prefer-dist
+      - name: Install backend dependencies
+        working-directory: backend
+        run: composer install --no-interaction --prefer-dist
 
-      # .env and APP_KEY required for feature tests (no .env in CI).
-      - name: Prepare environment
+      - name: Prepare backend test environment (APP_KEY + sqlite)
+        working-directory: backend
         run: |
           cp .env.example .env
           php artisan key:generate
+          test -f database/database.sqlite || touch database/database.sqlite
+          php artisan migrate --force
 
-      - run: php artisan test
+      - name: Run backend tests (Pest)
+        working-directory: backend
+        run: ./vendor/bin/pest
+
+      - name: Build backend image
+        run: docker build -t helpdesk-backend:test -f docker/backend.Dockerfile backend
+
+      - name: Scan backend image (Trivy)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: helpdesk-backend:test
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          # CI should fail on fixable HIGH/CRITICAL issues.
+          # OS CVEs with no upstream fix yet shouldn't block merges.
+          ignore-unfixed: true
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # npm 11 on GitHub runners has been flaky with optional deps (rollup native).
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Use stable npm
+        run: npm i -g npm@10
+
+      - name: Install frontend deps + run lint/test/build
+        working-directory: frontend
+        run: |
+          rm -rf node_modules
+          npm install
+          npm run lint
+          npm test -- --run
+          npm run build
+
+      - name: Build frontend image
+        run: docker build -t helpdesk-frontend:test -f docker/frontend.Dockerfile frontend
+
+      - name: Scan frontend image (Trivy)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: helpdesk-frontend:test
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          ignore-unfixed: true
