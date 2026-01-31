@@ -6,20 +6,30 @@ RUN apt-get update \
     git \
     unzip \
     libcurl4-openssl-dev \
+    libicu-dev \
     libonig-dev \
+    libsqlite3-dev \
     libxml2-dev \
     libzip-dev \
   && docker-php-ext-install \
+    bcmath \
     curl \
+    dom \
+    intl \
     mbstring \
     pdo_mysql \
+    pdo_sqlite \
     xml \
     zip \
   && rm -rf /var/lib/apt/lists/*
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+# Install deps with cache-friendly layers.
+# We skip scripts here because Laravel's default Composer scripts call `php artisan ...`,
+# which requires the app files to be present (and an APP_KEY).
 COPY composer.json composer.lock ./
-RUN composer install --no-dev --no-interaction --no-progress --prefer-dist --optimize-autoloader
+RUN composer install --no-dev --no-interaction --no-progress --prefer-dist --optimize-autoloader --no-scripts
 
 
 FROM php:8.3-apache
