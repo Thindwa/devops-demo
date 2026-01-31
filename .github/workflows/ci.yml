@@ -25,6 +25,14 @@ jobs:
         working-directory: backend
         run: composer install --no-interaction --prefer-dist
 
+      - name: Prepare backend test environment (APP_KEY + sqlite)
+        working-directory: backend
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          test -f database/database.sqlite || touch database/database.sqlite
+          php artisan migrate --force
+
       - name: Run backend tests (Pest)
         working-directory: backend
         run: ./vendor/bin/pest
@@ -38,15 +46,28 @@ jobs:
           image-ref: helpdesk-backend:test
           severity: CRITICAL,HIGH
           exit-code: "1"
+          # CI should fail on fixable HIGH/CRITICAL issues.
+          # OS CVEs with no upstream fix yet shouldn't block merges.
+          ignore-unfixed: true
 
   frontend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
+      # npm 11 on GitHub runners has been flaky with optional deps (rollup native).
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Use stable npm
+        run: npm i -g npm@10
+
       - name: Install frontend deps + run lint/test/build
         working-directory: frontend
         run: |
+          rm -rf node_modules
           npm install
           npm run lint
           npm test -- --run
@@ -61,3 +82,4 @@ jobs:
           image-ref: helpdesk-frontend:test
           severity: CRITICAL,HIGH
           exit-code: "1"
+          ignore-unfixed: true
