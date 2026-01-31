@@ -52,6 +52,11 @@ async function apiFetch(path, { method = 'GET', body } = {}) {
     throw err
   }
 
+  // If we got a 2xx but not JSON, treat that as an error (prevents null data crashes).
+  if (text && json === null) {
+    throw new Error(`Expected JSON but received: ${text.slice(0, 140)}`)
+  }
+
   return json
 }
 
