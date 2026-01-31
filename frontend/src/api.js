@@ -66,7 +66,14 @@ export const api = {
   logout: () => apiFetch('/api/logout', { method: 'POST' }),
   listTickets: () => apiFetch('/api/tickets'),
   createTicket: (title, description) => apiFetch('/api/tickets', { method: 'POST', body: { title, description } }),
+  updateTicket: (id, title, description) =>
+    apiFetch(`/api/tickets/${id}`, { method: 'PATCH', body: { title, description } }),
+  deleteTicket: (id) => apiFetch(`/api/tickets/${id}`, { method: 'DELETE' }),
   updateTicketStatus: (id, status) => apiFetch(`/api/tickets/${id}/status`, { method: 'PATCH', body: { status } }),
   listUsers: () => apiFetch('/api/users'),
+  createUser: (name, email, password, role) =>
+    apiFetch('/api/users', { method: 'POST', body: { name, email, password, role } }),
+  updateUser: (id, patch) => apiFetch(`/api/users/${id}`, { method: 'PATCH', body: patch }),
+  deleteUser: (id) => apiFetch(`/api/users/${id}`, { method: 'DELETE' }),
 }
 
