@@ -1,43 +1,63 @@
-# CI: run tests on every push + PR (all branches).
 name: CI
 
 on:
-  push:
   pull_request:
 
 permissions:
   contents: read
 
-# Cancel in-progress runs when a new push happens on the same branch.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  test:
+  backend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      # PHP 8.3 for compatibility with Laravel 12.
-      - uses: shivammathur/setup-php@v2
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
         with:
           php-version: "8.3"
 
-      - name: Cache Composer downloads
-        uses: actions/cache@v4
+      - name: Install backend dependencies
+        working-directory: backend
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Run backend tests (Pest)
+        working-directory: backend
+        run: ./vendor/bin/pest
+
+      - name: Build backend image
+        run: docker build -t helpdesk-backend:test -f docker/backend.Dockerfile backend
+
+      - name: Scan backend image (Trivy)
+        uses: aquasecurity/trivy-action@0.20.0
         with:
-          path: ~/.composer/cache
-          key: composer-cache-${{ runner.os }}-${{ hashFiles('composer.lock') }}
-          restore-keys: |
-            composer-cache-${{ runner.os }}-
+          image-ref: helpdesk-backend:test
+          severity: CRITICAL,HIGH
+          exit-code: "1"
 
-      - run: composer install --no-interaction --prefer-dist
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-      # .env and APP_KEY required for feature tests (no .env in CI).
-      - name: Prepare environment
+      - name: Install frontend deps + run lint/test/build
+        working-directory: frontend
         run: |
-          cp .env.example .env
-          php artisan key:generate
+          npm install
+          npm run lint
+          npm test -- --run
+          npm run build
 
-      - run: php artisan test
+      - name: Build frontend image
+        run: docker build -t helpdesk-frontend:test -f docker/frontend.Dockerfile frontend
+
+      - name: Scan frontend image (Trivy)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: helpdesk-frontend:test
+          severity: CRITICAL,HIGH
+          exit-code: "1"
