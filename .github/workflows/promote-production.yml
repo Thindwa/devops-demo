@@ -3,6 +3,16 @@ name: Promote Production
 on:
   push:
     branches: ["main"]
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: "Trigger Coolify deploy webhook (optional)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
 permissions:
   contents: read
@@ -43,6 +53,7 @@ jobs:
             "ghcr.io/${{ steps.image.outputs.repo }}-frontend:staging"
 
       - name: Deploy to Coolify (production)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy == 'true' }}
         run: |
           curl -sS -X GET "${{ secrets.COOLIFY_WEBHOOK_PRODUCTION }}" \
             -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}"

@@ -7,27 +7,54 @@ export function setToken(token) {
   else localStorage.setItem('helpdesk_token', token)
 }
 
+function getApiBaseUrl() {
+  const runtime = window.__ENV__?.VITE_API_BASE_URL
+  const v = (runtime ?? import.meta.env?.VITE_API_BASE_URL ?? '').trim()
+  return v.endsWith('/') ? v.slice(0, -1) : v
+}
+
+function apiUrl(path) {
+  const base = getApiBaseUrl()
+  if (!base) return path
+  if (path.startsWith('http://') || path.startsWith('https://')) return path
+  return `${base}${path.startsWith('/') ? path : `/${path}`}`
+}
+
 async function apiFetch(path, { method = 'GET', body } = {}) {
   const headers = { Accept: 'application/json' }
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
   if (body !== undefined) headers['Content-Type'] = 'application/json'
 
-  const res = await fetch(path, {
+  const res = await fetch(apiUrl(path), {
     method,
     headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   })
 
   const text = await res.text()
-  const json = text ? JSON.parse(text) : null
+  let json = null
+  if (text) {
+    try {
+      json = JSON.parse(text)
+    } catch {
+      json = null
+    }
+  }
 
   if (!res.ok) {
-    const msg = json?.message || `Request failed (${res.status})`
+    const msg =
+      json?.message ||
+      (text ? `Request failed (${res.status}): ${text.slice(0, 140)}` : `Request failed (${res.status})`)
     const err = new Error(msg)
     err.status = res.status
     err.payload = json
     throw err
+  }
+
+  // If we got a 2xx but not JSON, treat that as an error (prevents null data crashes).
+  if (text && json === null) {
+    throw new Error(`Expected JSON but received: ${text.slice(0, 140)}`)
   }
 
   return json
@@ -39,7 +66,14 @@ export const api = {
   logout: () => apiFetch('/api/logout', { method: 'POST' }),
   listTickets: () => apiFetch('/api/tickets'),
   createTicket: (title, description) => apiFetch('/api/tickets', { method: 'POST', body: { title, description } }),
+  updateTicket: (id, title, description) =>
+    apiFetch(`/api/tickets/${id}`, { method: 'PATCH', body: { title, description } }),
+  deleteTicket: (id) => apiFetch(`/api/tickets/${id}`, { method: 'DELETE' }),
   updateTicketStatus: (id, status) => apiFetch(`/api/tickets/${id}/status`, { method: 'PATCH', body: { status } }),
   listUsers: () => apiFetch('/api/users'),
+  createUser: (name, email, password, role) =>
+    apiFetch('/api/users', { method: 'POST', body: { name, email, password, role } }),
+  updateUser: (id, patch) => apiFetch(`/api/users/${id}`, { method: 'PATCH', body: patch }),
+  deleteUser: (id) => apiFetch(`/api/users/${id}`, { method: 'DELETE' }),
 }
 

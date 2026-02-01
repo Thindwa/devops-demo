@@ -37,9 +37,20 @@ FROM php:8.3-apache-bookworm
 
 WORKDIR /var/www/html
 
-# Pull latest security patches available at build time.
+# Pull latest security patches available at build time and install runtime PHP extensions.
 RUN apt-get update \
   && apt-get upgrade -y \
+  && apt-get install -y --no-install-recommends \
+    libcurl4-openssl-dev \
+    libonig-dev \
+    libxml2-dev \
+    libzip-dev \
+  && docker-php-ext-install \
+    curl \
+    mbstring \
+    pdo_mysql \
+    xml \
+    zip \
   && rm -rf /var/lib/apt/lists/*
 
 # Use Laravel-style public document root (works for real Laravel later too).
@@ -55,6 +66,15 @@ RUN a2enmod rewrite \
 COPY . /var/www/html
 
 COPY --from=vendor /var/www/html/vendor /var/www/html/vendor
+
+# Laravel needs writable cache directories at runtime.
+RUN mkdir -p /var/www/html/storage/framework/cache \
+  /var/www/html/storage/framework/sessions \
+  /var/www/html/storage/framework/views \
+  /var/www/html/storage/logs \
+  /var/www/html/bootstrap/cache \
+  && chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache \
+  && chmod -R ug+rwX /var/www/html/storage /var/www/html/bootstrap/cache
 
 EXPOSE 80
 
